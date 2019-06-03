@@ -1,6 +1,8 @@
 package com.example.alvin.vstsmobile;
 
 
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -19,6 +21,7 @@ import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentTransaction;
+import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -62,6 +65,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import static android.content.Context.NOTIFICATION_SERVICE;
+import static com.example.alvin.vstsmobile.MapService.NOTIFICATION_ID;
+
 
 /**
  * A simple {@link Fragment} subclass.
@@ -74,7 +80,7 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
 
     private static final String KEY_CAMERA_POSITION = "camera_position";
     private static final String KEY_LOCATION = "location";
-
+    public static final int NOTIFICATION_ID = 2020;
 
     private Location mLastKnownLocation;
     private FusedLocationProviderClient mFusedLocationProviderClient;
@@ -367,8 +373,9 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
 
     @Override
     public boolean onMarkerClick(final Marker marker) {
-        Locations bus_location = locations.get((int)marker.getTag());
 
+        Locations bus_location = locations.get((int)marker.getTag());
+        notifyPolice(bus_location);
         /*Intent intent = new Intent(getContext(),MapService.class);
         getActivity().startService(intent);*/
 
@@ -403,7 +410,7 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
             @Override
             public void run() {
                 getLocations();
-                handler.postDelayed(this,5000);
+                handler.postDelayed(this,1000);
             }
         });
     }
@@ -419,9 +426,9 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
             Marker marker = mMap.addMarker(new MarkerOptions().position(new LatLng(newLocation.getLatitude(),newLocation.getLongitude())));
 
             if (newLocation.getFlag() == 0)
-                marker.setIcon(BitmapDescriptorFactory.fromResource(R.drawable.icons_bus_blue));
+                marker.setIcon(BitmapDescriptorFactory.fromResource(R.drawable.icons8_bus_30_blue));
             else
-                marker.setIcon(BitmapDescriptorFactory.fromResource(R.drawable.icons_bus_red));
+                marker.setIcon(BitmapDescriptorFactory.fromResource(R.drawable.icons8_bus_30_red));
 
             marker.setTag(locations.size());
             newLocation.setMarker(marker);
@@ -432,13 +439,21 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
 
             int index = locations.indexOf(oldLocation);
             if (newLocation.getFlag() != oldLocation.getFlag()){
-                if (newLocation.getFlag() == 0){
+                if (newLocation.getFlag() == 1){
                     locations.get(index).setFlag(1);
-                    locations.get(index).getMarker().setIcon((BitmapDescriptorFactory.fromResource(R.drawable.icons_bus_red)));
+                    locations.get(index).getMarker().setIcon((BitmapDescriptorFactory.fromResource(R.drawable.icons8_bus_30_red)));
+                    if(trackedLfs.indexOf(newLocation.getLf_id()) < 0){
+                        notifyPolice(newLocation);
+                        trackedLfs.add(newLocation.getLf_id());
+                    }
 
                 }else {
                     locations.get(index).setFlag(0);
-                    locations.get(index).getMarker().setIcon((BitmapDescriptorFactory.fromResource(R.drawable.icons_bus_blue)));
+                    locations.get(index).getMarker().setIcon((BitmapDescriptorFactory.fromResource(R.drawable.icons8_bus_30_blue)));
+                    if (trackedLfs.indexOf(newLocation.getLf_id()) > 0){
+                        trackedLfs.remove(newLocation.getLf_id());
+                    }
+
                 }
             }
 
@@ -540,6 +555,40 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
 
     }
 
+    private void notifyPolice(Locations locations){
+        NotificationCompat.Builder builder =
+                new NotificationCompat.Builder(getContext())
+                        .setSmallIcon(android.R.drawable.sym_def_app_icon)
+                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setContentTitle("VSTS")
+                        .setContentText("Vehicle "+locations.getNumber_plate()+" over speeding at "+getRoadName(locations.getLatitude(),locations.getLongitude()))
+                        .setVibrate(new long[] {0,1000})
+                        .setAutoCancel(true);
+
+        Intent actionIntent = new Intent(getActivity(), MainActivity.class);
+        PendingIntent actionPendingIntent = PendingIntent.getActivity(
+                getContext(),
+                0,
+                actionIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
+        builder.setContentIntent(actionPendingIntent);
+
+        NotificationManager notificationManager = (NotificationManager)getActivity().getSystemService(NOTIFICATION_SERVICE);
+        notificationManager.notify(NOTIFICATION_ID,builder.build());
+    }
+
+    private String getRoadName(Double latitude, Double longitude){
+        Geocoder geocoder = new Geocoder(getActivity(), Locale.getDefault());
+        try {
+            List<Address> addresses = geocoder.getFromLocation(latitude, longitude, 1);
+            Address obj = addresses.get(0);
+
+            return obj.getThoroughfare();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return "";
+    }
 
 
 }
